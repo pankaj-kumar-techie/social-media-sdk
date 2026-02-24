@@ -1,32 +1,27 @@
-<div align="center">
-
-# 📡 Social Media SDK
+# Social Media SDK
 
 **A production-ready, async Python SDK for extracting creator data from YouTube, Instagram, and TikTok.**
 
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Code Style](https://img.shields.io/badge/code%20style-pep8-orange.svg)](https://pep8.org/)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
-
-</div>
 
 ---
 
-## ✨ Features
+## Features
 
-- 🔁 **Auto-pagination** — Fetches all pages using cursor/token automatically
-- ⚡ **Async-first** — Built on `httpx.AsyncClient` for high concurrency
-- 🛡️ **Retry on failure** — Exponential backoff with jitter for 429 & 5xx
-- 🪣 **Token Bucket Rate Limiter** — Per-platform request pacing
-- 🔐 **Env-based auth** — Credentials isolated in `.env`, never hardcoded
-- 🌐 **Proxy support** — Rotating proxy integration
-- 📦 **Pydantic models** — Strongly-typed, validated output
-- 📝 **Structured logging** — Full pipeline visibility with Loguru
+- **Auto-pagination**: Fetches all pages using cursor/token automatically.
+- **Async-first**: Built on `httpx.AsyncClient` for high concurrency.
+- **Retry Logic**: Exponential backoff with jitter for 429 and 5xx errors.
+- **Rate Limiting**: Token Bucket implementation for per-platform request pacing.
+- **Security**: Credentials isolated in `.env`, never hardcoded.
+- **Proxy Support**: Easy rotating proxy integration.
+- **Strong Typing**: Pydantic models for validated data output.
+- **Logging**: Structured pipeline visibility with Loguru.
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 git clone https://github.com/yourusername/social-media-sdk.git
@@ -59,43 +54,35 @@ asyncio.run(main())
 
 ---
 
-## 📚 Documentation
+## Documentation
 
-| Document                                               | Description                                                             |
-| ------------------------------------------------------ | ----------------------------------------------------------------------- |
-| [Architecture & System Design](./docs/architecture.md) | How the SDK is designed internally — layers, data flow, design patterns |
-| [Getting Started](./docs/getting-started.md)           | Installation, configuration, and your first API call                    |
-| [YouTube Guide](./docs/youtube-guide.md)               | YouTube Data API v3 setup, usage, quota management                      |
-| [Instagram Guide](./docs/instagram-guide.md)           | Session-based Instagram scraping guide                                  |
-| [TikTok Guide](./docs/tiktok-guide.md)                 | TikTok web extraction guide                                             |
-| [Core Components](./docs/core-components.md)           | HTTP Client, Rate Limiter, Retry, Proxy — deep dive                     |
-| [Data Models](./docs/data-models.md)                   | Profile & Content schema reference                                      |
-| [Extending the SDK](./docs/extending.md)               | How to add a new platform client                                        |
-| [Contributing](./CONTRIBUTING.md)                      | Contributing guidelines                                                 |
-| [Changelog](./CHANGELOG.md)                            | Version history                                                         |
+| Document                                     | Description                                     |
+| :------------------------------------------- | :---------------------------------------------- |
+| [Architecture](./docs/architecture.md)       | Layered design, data flow, and design patterns. |
+| [Getting Started](./docs/getting-started.md) | Installation and basic configuration.           |
+| [YouTube Guide](./docs/youtube-guide.md)     | API v3 setup and usage details.                 |
+| [Instagram Guide](./docs/instagram-guide.md) | Session-based scraping guide.                   |
+| [TikTok Guide](./docs/tiktok-guide.md)       | Web extraction guide.                           |
+| [Core Components](./docs/core-components.md) | HTTP Client, Rate Limiter, and Retry logic.     |
+| [Data Models](./docs/data-models.md)         | Profile and Content schema reference.           |
+| [Contributing](./CONTRIBUTING.md)            | Guidelines for contributing.                    |
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```text
 social_media_sdk/
-├── core/                   # Shared infrastructure layer
-├── models/                 # Pydantic data contracts
-├── platforms/              # Platform-specific business logic
+├── core/                   # Shared infrastructure
+├── models/                 # Data contracts
+├── platforms/              # Platform business logic
 ├── examples/               # Runnable demos
-├── docs/                   # Full documentation
+├── docs/                   # Documentation
 └── .env.example            # Environment template
 ```
 
 ---
 
-## 📜 License
+## License
 
 MIT License — see [LICENSE](./LICENSE)
-
----
-
-<div align="center">
-Made with ❤️ for the open-source community
-</div>

@@ -1,6 +1,6 @@
-# 🏗️ Architecture & System Design
+# Architecture and System Design
 
-> This document describes the internal design of the Social Media SDK — its layered architecture, data flow pipelines, design patterns, and the engineering rationale behind each decision.
+This document describes the internal design of the Social Media SDK — its layered architecture, data flow pipelines, design patterns, and the engineering rationale behind each decision.
 
 ---
 
@@ -22,7 +22,7 @@ graph TB
     subgraph "Core Infrastructure"
         HTTP[AsyncHttpClient]
         RL[RateLimiter — Token Bucket]
-        RT[@async_retry — Exponential Backoff]
+        RT["@async_retry — Exponential Backoff"]
         CFG[Settings — Pydantic .env Loader]
     end
 
@@ -67,9 +67,9 @@ graph TB
 
 ## Design Principles
 
-### 1. Clean Architecture — Layered Separation
+### 1. Layered Separation
 
-The SDK follows **Clean Architecture** (Robert C. Martin). Dependencies always flow **inward** — outer layers know about inner layers, never the reverse.
+The SDK follows a layered architecture where dependencies always flow inward. This ensures that outer layers know about inner layers, but not the reverse.
 
 ```mermaid
 graph LR
@@ -94,27 +94,27 @@ graph LR
     style APP fill:#1a1a2e,color:#fff,stroke:#333
 ```
 
-**What this enables:**
+**Benefits:**
 
-- Add a new platform **without touching** Core
-- Replace the HTTP library **without touching** any platform client
-- Test each layer **independently** with mock injection
+- Add a new platform without modifying core infrastructure.
+- Replace the HTTP library without touching platform clients.
+- Test each layer independently with mock injection.
 
 ### 2. Dependency Injection
 
-Platform clients don't create their own HTTP clients — they **receive** one via constructor:
+Platform clients receive their dependencies (like the HTTP client) via constructor, promoting reusability and testability:
 
 ```python
 # One HTTP client shared across all platforms
-http_client = AsyncHttpClient(rate_limiter=limiter, proxy_url="...")
+http_client = AsyncHttpClient(rate_limiter=limiter)
 
-yt = YouTubeClient(http_client, api_key="...")      # injected
-ig = InstagramClient(http_client, session_id="...")  # same client reused
+yt = YouTubeClient(http_client, api_key="...")
+ig = InstagramClient(http_client, session_id="...")
 ```
 
-### 3. Strategy Pattern — Platform Abstraction
+### 3. Strategy Pattern
 
-All platform clients implement `BasePlatformClient`:
+All platform clients implement the `BasePlatformClient` interface, ensuring consistent behavior across different social media providers.
 
 ```mermaid
 classDiagram
@@ -151,22 +151,15 @@ classDiagram
     BasePlatformClient <|-- TikTokClient
 ```
 
-### 4. Decorator Pattern — Retry Logic
+### 4. Retry Logic
 
-The `@async_retry` transparently wraps `AsyncHttpClient.request()`, keeping retry logic completely separate from business logic:
-
-```python
-class AsyncHttpClient:
-    @async_retry(max_retries=3, base_delay=2.0)   # ← transparent wrapper
-    async def request(self, method, url, ...):
-        ...  # clean request logic, no retry code here
-```
+The `@async_retry` decorator wraps `AsyncHttpClient.request()`, keeping retry logic isolated from business logic.
 
 ---
 
 ## Request Lifecycle
 
-Every API call flows through the same pipeline:
+Every API call flows through a standardized pipeline:
 
 ```mermaid
 sequenceDiagram
@@ -183,9 +176,8 @@ sequenceDiagram
     Note over RT: @async_retry wraps this call
 
     HTTP->>RL: wait()
-    RL-->>HTTP: Token granted ✓
-
-    HTTP->>API: GET /youtube/v3/channels?...
+    RL-->>HTTP: Token granted
+    HTTP->>API: GET request
 
     alt 200 OK
         API-->>HTTP: Response JSON
@@ -196,7 +188,7 @@ sequenceDiagram
     alt 429 Rate Limited
         API-->>HTTP: 429 Too Many Requests
         HTTP->>RT: Raise HTTPStatusError
-        RT->>RT: Sleep 2^n + jitter
+        RT->>RT: Sleep with backoff
         RT->>HTTP: Retry request
         HTTP->>RL: wait()
         HTTP->>API: GET (retry)
@@ -204,43 +196,27 @@ sequenceDiagram
         HTTP-->>PC: httpx.Response
         PC-->>App: Profile(...)
     end
-
-    alt 5xx Server Error
-        API-->>HTTP: 500/502/503
-        HTTP->>RT: Raise for retry
-        RT->>RT: Sleep 2^n + jitter
-        RT->>HTTP: Retry request
-    end
 ```
 
 ---
 
 ## Pagination Engine
 
-All platforms implement the same **cursor-based pagination** pattern:
+All platforms implement cursor-based pagination:
 
 ```mermaid
 flowchart TD
     START([Start]) --> INIT[Initialize cursor = None]
     INIT --> FETCH[Fetch page with cursor]
-    FETCH --> PARSE[Parse items from response]
-    PARSE --> APPEND[Append items to results]
-    APPEND --> CHECK{Next cursor exists?}
+    FETCH --> PARSE[Parse items]
+    PARSE --> APPEND[Append to results]
+    APPEND --> CHECK{Next cursor?}
     CHECK -->|Yes| UPDATE[Update cursor] --> FETCH
-    CHECK -->|No| DONE([Return all results])
-
-    FETCH -.->|On Error| RETRY{Retry available?}
-    RETRY -->|Yes| WAIT[Backoff + Jitter] --> FETCH
-    RETRY -->|No| FAIL([Raise Error])
+    CHECK -->|No| DONE([Return results])
 
     style START fill:#0f3460,color:#fff
     style DONE fill:#0f3460,color:#fff
-    style FAIL fill:#e94560,color:#fff
-    style CHECK fill:#533483,color:#fff
-    style RETRY fill:#533483,color:#fff
 ```
-
-**Platform cursor mapping:**
 
 | Platform  | Cursor Field (Response) | Cursor Param (Request) | Stop Condition    |
 | --------- | ----------------------- | ---------------------- | ----------------- |
@@ -250,106 +226,54 @@ flowchart TD
 
 ---
 
-## Rate Limiting — Token Bucket
+## Rate Limiting
+
+The SDK uses a **Token Bucket** algorithm for request pacing.
 
 ```mermaid
 stateDiagram-v2
     [*] --> Full: Init (capacity tokens)
-
     Full --> Consuming: Request arrives
-    Consuming --> Available: tokens > 0 → grant token
+    Consuming --> Available: tokens > 0
     Available --> Consuming: Next request
-
     Consuming --> Empty: tokens = 0
-    Empty --> Refilling: Wait (1/rate seconds)
+    Empty --> Refilling: Wait (1/rate)
     Refilling --> Available: Token refilled
-
-    note right of Full: Bucket starts with\n'burst' tokens
-    note right of Empty: Caller blocks\nuntil refill
-    note right of Refilling: Refill rate =\nrequests_per_second
 ```
 
-**Why Token Bucket over fixed delay?**
-
-- Fixed delay: 1 req every 500ms = always 2 req/s, even if API allows burst
-- Token Bucket: Accumulate tokens during idle time, burst when needed, smooth over sustained load
+- **Efficiency**: Allows bursts while maintaining a consistent throughput over time compared to fixed-delay limiting.
 
 ---
 
-## Error Handling Strategy
+## Error Handling
 
 ```mermaid
 flowchart TD
     REQ[HTTP Request] --> STATUS{Status Code}
+    STATUS -->|2xx| OK[Success]
+    STATUS -->|429/5xx| RETRYABLE{Retries left?}
+    STATUS -->|4xx| RAISE[Client Error]
 
-    STATUS -->|2xx| OK[Return Response ✓]
-    STATUS -->|429| RATE[Rate Limited]
-    STATUS -->|5xx| SERVER[Server Error]
-    STATUS -->|4xx| CLIENT[Client Error]
-
-    RATE --> RETRYABLE{Retries left?}
-    SERVER --> RETRYABLE
-
-    RETRYABLE -->|Yes| BACKOFF["Sleep: base × 2^attempt + jitter"]
+    RETRYABLE -->|Yes| BACKOFF[Wait with Jitter]
     BACKOFF --> REQ
-
-    RETRYABLE -->|No| RAISE[Raise Final Error ✗]
-    CLIENT --> RAISE
+    RETRYABLE -->|No| RAISE[Final Error]
 
     style OK fill:#2d6a4f,color:#fff
     style RAISE fill:#e94560,color:#fff
-    style BACKOFF fill:#533483,color:#fff
-    style RETRYABLE fill:#0f3460,color:#fff
 ```
 
 ---
 
 ## Security Model
 
-```mermaid
-flowchart LR
-    ENV[".env file (gitignored)"] --> CFG["core/config.py\n(Pydantic Settings)"]
-    CFG --> |API Key| YT[YouTube Client]
-    CFG --> |Session Cookies| IG[Instagram Client]
-    CFG --> |Session Cookies| TT[TikTok Client]
-    CFG --> |Proxy URL| HTTP[HTTP Client]
-
-    LOG["Loguru Logger"] -.-> |"Masks credentials\nin log output"| CONSOLE[Console / File]
-
-    style ENV fill:#e94560,color:#fff
-    style CFG fill:#533483,color:#fff
-    style LOG fill:#0f3460,color:#fff
-```
-
-**Principles:**
-
-1. Credentials live **only** in `.env` (gitignored)
-2. Logger never exposes full API keys or session tokens
-3. Session cookies have expiration — the SDK raises clear errors on auth failure
-4. Proxy support enables IP rotation for anti-detection
+1. **Credentials**: Stored only in `.env` (gitignored).
+2. **Log Masking**: Credentials are never exposed in logs.
+3. **Session Management**: SDK raises clear errors on auth failure.
 
 ---
 
 ## Extension Points
 
-```mermaid
-graph TD
-    subgraph "Easy to Add"
-        A[New Platform Client] --> B["Inherit BasePlatformClient\nImplement get_profile + get_all_content"]
-        C[Caching Layer] --> D["Wrap AsyncHttpClient\nwith cache decorator"]
-        E[New Auth Method] --> F["Add to config.py\nInject into client constructor"]
-    end
-
-    subgraph "Planned Improvements"
-        G[Database Persistence] --> H["Serialize Pydantic models\nto SQLAlchemy / MongoDB"]
-        I[Webhook Notifications] --> J["Add callbacks to\npagination loops"]
-        K[Session Rotation] --> L["Pool of session IDs\nRotate on 401"]
-    end
-
-    style A fill:#0f3460,color:#fff
-    style C fill:#0f3460,color:#fff
-    style E fill:#0f3460,color:#fff
-    style G fill:#533483,color:#fff
-    style I fill:#533483,color:#fff
-    style K fill:#533483,color:#fff
-```
+- **New Platforms**: Inherit `BasePlatformClient` and implement core methods.
+- **Caching**: Wrap `AsyncHttpClient` with a caching decorator.
+- **Persistence**: Serialize Pydantic models to a database.
